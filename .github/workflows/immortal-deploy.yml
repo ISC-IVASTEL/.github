@@ -1,0 +1,74 @@
+# .github/workflows/immortal-deploy.yml
+name: ISC IVASTEL — Eternal Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:      # можно запустить вручную одной кнопкой
+
+jobs:
+  deploy-everywhere:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # 1. Код
+      - uses: actions/checkout@v4
+
+      # 2. Vercel (основной)
+      - name: Vercel Deploy
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          prod: true
+
+      # 3. Cloudflare Pages + Worker-призрак
+      - name: Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          command: pages publish . --project-name=ivastel --branch=main
+
+      # 4. Netlify
+      - name: Netlify Deploy
+        uses: nwtgck/actions-netlify@v3
+        with:
+          publish-dir: ./dist
+          production-deploy: true
+          netlify-config-path: ./netlify.toml
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+      # 5. Deno Deploy
+      - name: Deno Deploy
+        uses: denoland/deployctl@v1
+        with:
+          project: ivastel-deno
+          entrypoint: main.ts
+
+      # 6. Render / Railway (если есть)
+      # - name: Render Trigger
+      #   run: curl -X POST ${{ secrets.RENDER_WEBHOOK }}
+
+      # 7. IPFS (Pinata)
+      - name: Pin to IPFS
+        run: |
+          curl -X POST "https://api.pinata.cloud/pinning/pinFileToIPFS" \
+            -H "Authorization: Bearer ${{ secrets.PINATA_JWT }}" \
+            -F file=@./dist/index.html
+
+      # 8. Arweave (перманентный бэкап за $5 навсегда)
+      - name: Arweave Forever
+        run: |
+          curl -X POST https://arweave.net/tx \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @./dist.tar.gz
+
+      # 9. Уведомление тебе
+      - name: Telegram Alert
+        run: |
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT }}/sendMessage \
+            -d chat_id=${{ secrets.TG_CHAT }} \
+            -d text="ISC IVASTEL возродился на 8+ платформах! $(date)"
